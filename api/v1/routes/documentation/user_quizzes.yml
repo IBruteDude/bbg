@@ -1,0 +1,534 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for User Quizzes
+  title: User Quizzes API
+  version: 1.0.0
+paths:
+  /api/v1/user/quiz:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            category:
+              type: string
+            difficulty:
+              type: integer
+            sort_by:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              category:
+                type: string
+              difficulty:
+                type: integer
+              duration:
+                type: integer
+              points:
+                type: integer
+              quiz_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - quiz_id
+            - title
+            - category
+            - difficulty
+            - points
+            - duration
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with the user's created quizzes
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            category:
+              type: string
+            difficulty:
+              type: integer
+            duration:
+              type: integer
+            end:
+              pattern: ''
+              type: string
+            group_id:
+              type: integer
+            points:
+              type: integer
+            start:
+              pattern: ''
+              type: string
+            title:
+              type: string
+          required:
+          - title
+          - category
+          - difficulty
+          - points
+          type: object
+      responses:
+        201:
+          description: 201
+          schema:
+            properties: {}
+            required: []
+            type: object
+        400:
+          description: 400
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: create a new quiz for user
+  /api/v1/user/quiz/<quiz_id>:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: delete the user's quiz
+    put:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            category:
+              type: string
+            difficulty:
+              type: integer
+            duration:
+              type: integer
+            end:
+              pattern: ''
+              type: string
+            group_id:
+              type: integer
+            points:
+              type: integer
+            start:
+              pattern: ''
+              type: string
+            title:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: modify the quiz details
+  /api/v1/user/quiz/<quiz_id>/question:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            question:
+              items:
+                properties:
+                  number:
+                    type: integer
+                required:
+                - number
+                type: object
+              type: array
+          required:
+          - question
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: remove questions from the quiz
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              questions:
+                items:
+                  properties:
+                    correct_answer:
+                      items:
+                        type: integer
+                      type: array
+                    options:
+                      items:
+                        type: string
+                      type: array
+                    points:
+                      type: integer
+                    statement:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - statement
+                  - points
+                  - type
+                  - options
+                  - correct_answer
+                  type: object
+                type: array
+            required:
+            - questions
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with the quiz's list of questions
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            questions:
+              items:
+                properties:
+                  correct_answer:
+                    items:
+                      type: integer
+                    type: array
+                  options:
+                    items:
+                      type: string
+                    type: array
+                  points:
+                    type: integer
+                  statement:
+                    type: string
+                  type:
+                    type: string
+                required:
+                - statement
+                - points
+                - type
+                - options
+                - correct_answer
+                type: object
+              type: array
+          required:
+          - questions
+          type: object
+      responses:
+        201:
+          description: 201
+          schema:
+            properties: {}
+            required: []
+            type: object
+        400:
+          description: 400
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: add questions to the quiz
+    put:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            questions:
+              items:
+                properties:
+                  correct_answer:
+                    items:
+                      type: integer
+                    type: array
+                  number:
+                    type: integer
+                  options:
+                    items:
+                      type: string
+                    type: array
+                  points:
+                    type: integer
+                  statement:
+                    type: string
+                  type:
+                    type: string
+                required:
+                - number
+                type: object
+              type: array
+          required:
+          - questions
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              success:
+                type: string
+            required:
+            - success
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: modify the quiz's questions
+  /api/v1/user/quiz/<quiz_id>/stats/attempts:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              attempt_id:
+                type: integer
+              points:
+                type: integer
+              time:
+                pattern: ''
+                type: string
+              user_id:
+                type: integer
+              user_name:
+                type: string
+            required:
+            - user_id
+            - user_name
+            - attempt_id
+            - time
+            - points
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with stats about the user attempts of the quiz
+  /api/v1/user/quiz/<quiz_id>/stats/question/<question_id>:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              correct_answers:
+                type: integer
+              wrong_answers:
+                items:
+                  type: integer
+                type: array
+            required:
+            - correct_answers
+            - wrong_answers
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with stats about the user attempts of a quiz's question
+schemes:
+- http
+- https
+swagger: '2.0'

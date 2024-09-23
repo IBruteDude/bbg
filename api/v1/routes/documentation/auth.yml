@@ -1,0 +1,221 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for Auth
+  title: Auth API
+  version: 1.0.0
+paths:
+  /api/v1/auth/deactivate:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        401:
+          description: 401
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: delete user account
+  /api/v1/auth/login:
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+          required:
+          - email
+          - password
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        401:
+          description: 401
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: create a new session for the user and log in
+  /api/v1/auth/logout:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        401:
+          description: 401
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: remove user session and log out
+  /api/v1/auth/password/reset:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        401:
+          description: 401
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: send a password reset email
+  /api/v1/auth/password/reset/confirm:
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            new_password:
+              type: string
+            reset_token:
+              type: string
+          required:
+          - reset_token
+          - new_password
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        400:
+          description: 400
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: confirm password reset
+  /api/v1/auth/signup:
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            first_name:
+              type: string
+            last_name:
+              type: string
+            password:
+              type: string
+            profile_picture:
+              pattern: ^(https?|ftp|file)://([-a-zA-Z0-9@:%._+~#=]{2,256})(:[0-9]+)?(/[-a-zA-Z0-9@:%._+~#=]*)*$
+              type: string
+            user_name:
+              type: string
+          required:
+          - email
+          - password
+          - first_name
+          - last_name
+          - user_name
+          type: object
+      responses:
+        201:
+          description: 201
+          schema:
+            properties: {}
+            required: []
+            type: object
+        400:
+          description: 400
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: create a new user account
+schemes:
+- http
+- https
+swagger: '2.0'

@@ -1,0 +1,293 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for User Profile
+  title: User Profile API
+  version: 1.0.0
+paths:
+  /api/v1/user/profile:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              user:
+                properties:
+                  email:
+                    type: string
+                  first_name:
+                    type: string
+                  last_name:
+                    type: string
+                  profile_picture:
+                    pattern: ^(https?|ftp|file)://([-a-zA-Z0-9@:%._+~#=]{2,256})(:[0-9]+)?(/[-a-zA-Z0-9@:%._+~#=]*)*$
+                    type: string
+                  user_name:
+                    type: string
+                required:
+                - email
+                - first_name
+                - last_name
+                - user_name
+                - profile_picture
+                type: object
+            required:
+            - user
+            type: object
+      summary: respond with user profile details
+    put:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            first_name:
+              type: string
+            last_name:
+              type: string
+            profile_picture:
+              pattern: ^(https?|ftp|file)://([-a-zA-Z0-9@:%._+~#=]{2,256})(:[0-9]+)?(/[-a-zA-Z0-9@:%._+~#=]*)*$
+              type: string
+            user_name:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        400:
+          description: 400
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: change user profile details
+  /api/v1/user/profile/group:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              group_id:
+                type: integer
+              group_title:
+                type: string
+            required:
+            - group_id
+            - group_title
+            type: object
+      summary: respond with all the user's subscribed groups
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            group_id:
+              type: integer
+          required:
+          - group_id
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              groups:
+                items:
+                  properties:
+                    group_id:
+                      type: integer
+                    group_title:
+                      type: string
+                  required:
+                  - group_id
+                  - group_title
+                  type: object
+                type: array
+            required:
+            - groups
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        410:
+          description: 410
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: subscribe the user to the group
+  /api/v1/user/profile/quiz/<quiz_id>:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              attempt_id:
+                type: integer
+              score:
+                type: integer
+              time:
+                pattern: ''
+                type: string
+            required:
+            - attempt_id
+            - time
+            - score
+            type: object
+        403:
+          description: 403
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        410:
+          description: 410
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with all user's quiz attempts
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            answers:
+              items:
+                properties:
+                  options:
+                    items:
+                      type: integer
+                    type: array
+                required:
+                - options
+                type: object
+              type: array
+          required:
+          - answers
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              correct_answers:
+                items:
+                  properties:
+                    answers:
+                      items:
+                        properties:
+                          options:
+                            items:
+                              type: integer
+                            type: array
+                        required:
+                        - options
+                        type: object
+                      type: array
+                    score:
+                      type: integer
+                  required:
+                  - score
+                  - answers
+                  type: object
+                type: array
+            required:
+            - correct_answers
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: submit user answers for the quiz's questions
+schemes:
+- http
+- https
+swagger: '2.0'

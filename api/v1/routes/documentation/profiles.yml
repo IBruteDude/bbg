@@ -1,0 +1,137 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for Profiles
+  title: Profiles API
+  version: 1.0.0
+paths:
+  /api/v1/profile:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              user_id:
+                type: integer
+              user_name:
+                type: string
+            required:
+            - user_id
+            - user_name
+            type: object
+      summary: respond with quizzes with different filters
+  /api/v1/profile/<user_id>:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              created_quizzes:
+                type: integer
+              owned_groups:
+                type: integer
+              solved_quizzes:
+                type: integer
+              subscribed_groups:
+                type: integer
+              user_name:
+                type: string
+            required:
+            - user_name
+            - owned_groups
+            - created_quizzes
+            - subscribed_groups
+            - solved_quizzes
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with user profile info
+  /api/v1/profile/<user_id>/quiz:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            category:
+              type: string
+            difficulty:
+              type: integer
+            sort_by:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              category:
+                type: string
+              difficulty:
+                type: integer
+              duration:
+                type: integer
+              points:
+                type: integer
+              quiz_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - quiz_id
+            - title
+            - category
+            - difficulty
+            - points
+            - duration
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with the user's created quizzes
+schemes:
+- http
+- https
+swagger: '2.0'

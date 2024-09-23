@@ -9,13 +9,14 @@ classes = {}
 
 class DocumentStorage:
     """Interacts with the MongoDB database."""
+
     _client = None
     __db = None
 
     @property
     def _db(self):
         if self.__db is None:
-            self.__db = self._client[getenv('QQ_DB', 'quizquickie')]
+            self.__db = self._client[getenv("QQ_DB", "quizquickie")]
         return self.__db
 
     def __init__(self):
@@ -28,9 +29,7 @@ class DocumentStorage:
 
     def update(self, obj):
         """Update the object in the database."""
-        self._db[obj.__tablename__].update_one(
-            {"_id": obj.id}, {"$set": obj.json()}
-        )
+        self._db[obj.__tablename__].update_one({"_id": obj.id}, {"$set": obj.json()})
 
     def delete(self, obj):
         """Delete the object from the current database."""
@@ -56,7 +55,7 @@ class DocumentStorage:
         """
         if cls.__tablename__ not in classes.values():
             return None
-        result = self._db[cls.__tablename__].find_one({'_id': id})
+        result = self._db[cls.__tablename__].find_one({"_id": id})
         return result
 
     def search(self, cls, **kwargs):
@@ -82,26 +81,26 @@ class DocumentStorage:
             for clas in classes.values():
                 objs = self._db[clas.__tablename__].find({})
                 for obj in objs:
-                    key = clas.__name__ + '.' + str(obj["_id"])
+                    key = clas.__name__ + "." + str(obj["_id"])
                     new_dict[key] = obj
         else:
             objs = self._db[cls.__tablename__].find({})
             for obj in objs:
-                key = cls.__name__ + '.' + str(obj["_id"])
+                key = cls.__name__ + "." + str(obj["_id"])
                 new_dict[key] = obj
         return new_dict
 
 
 # Example usage
-if __name__ == '__main__':
+if __name__ == "__main__":
     db = DocumentStorage()
     db.reload()
 
     class T:
-        __tablename__ = 't'
+        __tablename__ = "t"
         id = 69
-        h = 'hello'
-        w = 'world'
+        h = "hello"
+        w = "world"
 
         def json(self):
             return self.__dict__
@@ -109,7 +108,7 @@ if __name__ == '__main__':
     db.new(T())  # Add the object to the database
     db.new(T())
     db.new(T())
-    
+
     # Retrieve object by id
     obj = db.all(T)
     print(obj)
@@ -118,4 +117,3 @@ if __name__ == '__main__':
     if not db.count(T) == 3:
         print(db.count(T))
         assert False
-

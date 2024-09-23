@@ -1,5 +1,6 @@
 """ Base module
 """
+
 from datetime import datetime, timezone
 from typing import TypeVar, List, Iterable
 from os import path
@@ -8,23 +9,22 @@ from random import randint
 import uuid
 from sqlalchemy import Column, INTEGER, DATETIME, UUID
 from sqlalchemy.ext.declarative import declarative_base
-from models import storage
 
 time_fmt = "%Y-%m-%dT%H:%M:%S.%f"
 
 Base = declarative_base()
 
+
 class BaseModel:
-    __tablename__ = ''
-    """The BaseModel class from which future classes will be derived
-    """
+    """The BaseModel class from which future classes will be derived"""
+
+    __tablename__ = ""
     id = Column(INTEGER, primary_key=True, autoincrement=True)
     created_at = Column(DATETIME, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DATETIME, default=lambda: datetime.now(timezone.utc))
 
     def __init__(self, **kwargs):
-        """Initialization of the base model
-        """
+        """Initialization of the base model"""
         if kwargs:
             for key, value in kwargs.items():
                 if key != "__class__":
@@ -34,7 +34,11 @@ class BaseModel:
                     if type(kwargs[time_key]) is datetime:
                         setattr(self, time_key, kwargs[time_key])
                     else:
-                        setattr(self, time_key, datetime.strptime(kwargs[time_key], time_fmt))
+                        setattr(
+                            self,
+                            time_key,
+                            datetime.strptime(kwargs[time_key], time_fmt),
+                        )
                 else:
                     self.updated_at = datetime.now(timezone.utc)
             if not kwargs.get("id", False):
@@ -46,9 +50,9 @@ class BaseModel:
 
     def __str__(self):
         """String representation of the BaseModel class"""
-        return "[{:s}] ({:d}) {}".format(self.__class__.__name__,
-                                         self.id,
-                                         self.__dict__)
+        return "[{:s}] ({:d}) {}".format(
+            self.__class__.__name__, self.id, self.__dict__
+        )
 
     def update(self, **kwargs):
         if kwargs:
@@ -58,11 +62,15 @@ class BaseModel:
 
     def save(self):
         """updates the attribute 'updated_at' with the current datetime"""
+        from models import storage
+
         self.updated_at = datetime.now(timezone.utc)
         storage.update(self)
 
     def delete(self):
         """delete the current instance from the storage"""
+        from models import storage
+
         storage.delete(self)
 
     def json(self):
@@ -72,8 +80,7 @@ class BaseModel:
         return self._dict_filter(new_dict)
 
     def _dict_filter(self, obj_dict):
-        """remove private fields from instance
-        """
+        """remove private fields from instance"""
         if "created_at" in obj_dict:
             obj_dict["created_at"] = obj_dict["created_at"].strftime(time_fmt)
         if "updated_at" in obj_dict:
@@ -81,4 +88,3 @@ class BaseModel:
         if "_sa_instance_state" in obj_dict:
             del obj_dict["_sa_instance_state"]
         return obj_dict
-

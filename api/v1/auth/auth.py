@@ -10,39 +10,34 @@ from models.user import User
 from models.user_session import UserSession
 
 
-
 class Auth:
-    """ Base authentication manager class
-    """
+    """Base authentication manager class"""
+
     def require_auth(self, path: str, excluded_paths: List[str]) -> bool:
-        """ Check if a path requires authentication
-        """
+        """Check if a path requires authentication"""
         if path is None or excluded_paths is None:
             return True
-        if path in excluded_paths or path + '/' in excluded_paths:
+        if path in excluded_paths or path + "/" in excluded_paths:
             return False
         for expath in excluded_paths:
-            if (expath.endswith('*') and path.find(expath.strip('*')) != 0):
+            if expath.endswith("*") and path.find(expath.strip("*")) != 0:
                 return False
         return True
 
     def authorization_header(self, request=None) -> str:
-        """ Extract the 'Authorization' header
-        """
+        """Extract the 'Authorization' header"""
         if request is None:
             return None
-        if request.headers.get('Authorization') is None:
+        if request.headers.get("Authorization") is None:
             return None
-        return request.headers['Authorization']
+        return request.headers["Authorization"]
 
-    def current_user(self, request=None) -> TypeVar('User'): # type: ignore
-        """ Get the current user
-        """
+    def current_user(self, request=None) -> User:
+        """Get the current user"""
         return None
 
     def session_cookie(self, request=None):
-        """ Get the the cookie value of a request
-        """
+        """Get the the cookie value of a request"""
         if request is None:
             return None
-        return request.cookies.get(getenv('SESSION_NAME'))
+        return request.cookies.get(getenv("SESSION_NAME", "session_id"))

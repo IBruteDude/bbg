@@ -1,0 +1,265 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for User Groups
+  title: User Groups API
+  version: 1.0.0
+paths:
+  /api/v1/user/group:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              group_id:
+                type: integer
+              group_title:
+                type: string
+            required:
+            - group_id
+            - group_title
+            type: object
+      summary: respond with all the user's own groups
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            title:
+              type: string
+          required:
+          - title
+          type: object
+      responses:
+        201:
+          description: 201
+          schema:
+            properties: {}
+            required: []
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: create a user group
+  /api/v1/user/group/<group_id>:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: delete a user group
+    put:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            title:
+              type: string
+          required:
+          - title
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: update user group details
+  /api/v1/user/group/<group_id>/users:
+    delete:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            users:
+              items:
+                properties:
+                  user_id:
+                    type: integer
+                required:
+                - user_id
+                type: object
+              type: array
+          required:
+          - users
+          type: object
+      responses:
+        204:
+          description: 204
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: remove users from group
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              attempted_quizzes:
+                items:
+                  properties:
+                    quiz_id:
+                      type: integer
+                  required:
+                  - quiz_id
+                  type: object
+                type: array
+              total_score:
+                type: integer
+              user_id:
+                type: integer
+              user_name:
+                type: integer
+            required:
+            - user_id
+            - user_name
+            - total_score
+            - attempted_quizzes
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: get all the group subscribed users
+    post:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            users:
+              items:
+                properties:
+                  user_id:
+                    type: integer
+                required:
+                - user_id
+                type: object
+              type: array
+          required:
+          - users
+          type: object
+      responses:
+        201:
+          description: 201
+          schema:
+            properties: {}
+            required: []
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        409:
+          description: 409
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: add users to a group
+schemes:
+- http
+- https
+swagger: '2.0'

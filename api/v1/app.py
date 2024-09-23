@@ -4,7 +4,7 @@
 from os import getenv
 from flask import Flask, jsonify, abort, request, make_response
 from flask_cors import CORS
-from flask_babel import Babel
+from flask_babel import Babel, _
 from flasgger import Swagger
 from api.v1.routes import app_routes
 from api.v1.auth import auth
@@ -27,8 +27,17 @@ def get_locale():
     return request.accept_languages.best_match(app.config["LANGUAGES"])
 
 
-Babel(app, locale_selector=get_locale, default_timezone="UTC",
-      default_locale=app.config["LANGUAGES"][0])
+def get_timezone():
+    """"""
+
+
+Babel(
+    app,
+    locale_selector=get_locale,
+    timezone_selector=get_timezone,
+    default_timezone="UTC",
+    default_locale=app.config["LANGUAGES"][0],
+)
 
 
 @app.teardown_appcontext
@@ -39,12 +48,15 @@ def close_connection(s):
 @app.before_request
 def auth_handler():
     """Auth handler function"""
+    if auth is None:
+        return
     if not auth.require_auth(
         request.path,
         [
             "/api/v1/status/",
             "/api/v1/auth/signup/",
             "/api/v1/auth/login/",
+            "/apidocs/*",
         ],
     ):
         return
@@ -62,19 +74,19 @@ def auth_handler():
 @app.errorhandler(401)
 def not_authorized(error) -> str:
     """Not authorized handler"""
-    return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"error": _("unauthorized")}), 401
 
 
 @app.errorhandler(403)
 def forbidden(error) -> str:
     """forbidden handler"""
-    return jsonify({"error": "Forbidden"}), 403
+    return jsonify({"error": _("forbidden")}), 403
 
 
 @app.errorhandler(404)
 def not_found(error) -> str:
     """Not found handler"""
-    return jsonify({"error": "Not found"}), 404
+    return jsonify({"error": _("not_found", data="user")}), 404
 
 
 if __name__ == "__main__":

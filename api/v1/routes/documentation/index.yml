@@ -1,0 +1,59 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for Index
+  title: Index API
+  version: 1.0.0
+paths:
+  /api/v1/stats:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              online_users:
+                type: integer
+            required:
+            - online_users
+            type: object
+        401:
+          description: 401
+          schema:
+            properties: {}
+            required: []
+            type: object
+      summary: report statistics about api uptime and workload
+  /api/v1/status:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              status:
+                type: string
+            required:
+            - status
+            type: object
+      summary: report the api status
+schemes:
+- http
+- https
+swagger: '2.0'

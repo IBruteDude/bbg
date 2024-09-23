@@ -1,0 +1,174 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for Quizzes
+  title: Quizzes API
+  version: 1.0.0
+paths:
+  /api/v1/quiz:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            category:
+              type: string
+            difficulty:
+              type: integer
+            sort_by:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              category:
+                type: string
+              difficulty:
+                type: integer
+              duration:
+                type: integer
+              end:
+                pattern: ''
+                type: string
+              group_id:
+                type: integer
+              points:
+                type: integer
+              quiz_id:
+                type: integer
+              start:
+                pattern: ''
+                type: string
+              title:
+                type: string
+            required:
+            - quiz_id
+            - title
+            - category
+            - difficulty
+            - points
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        422:
+          description: 422
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with quizzes with different filters
+  /api/v1/quiz/<quiz_id>:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              questions:
+                items:
+                  properties:
+                    options:
+                      items:
+                        type: string
+                      type: array
+                    points:
+                      type: integer
+                    statement:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - statement
+                  - points
+                  - type
+                  - options
+                  type: object
+                type: array
+            required:
+            - questions
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        410:
+          description: 410
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with the quiz's list of questions
+  /api/v1/quiz/<quiz_id>/stats:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              attempts:
+                type: integer
+              average_score:
+                type: number
+              max_score:
+                type: number
+              min_score:
+                type: number
+            required:
+            - max_score
+            - min_score
+            - average_score
+            - attempts
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with stats about the user attempts of the quiz
+schemes:
+- http
+- https
+swagger: '2.0'

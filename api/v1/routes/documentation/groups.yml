@@ -1,0 +1,138 @@
+basePath: /api/v1
+host: localhost:5000
+info:
+  description: API documentation for Groups
+  title: Groups API
+  version: 1.0.0
+paths:
+  /api/v1/group:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              group_id:
+                type: integer
+              owner_id:
+                type: integer
+              owner_name:
+                type: string
+              title:
+                type: string
+            required:
+            - group_id
+            - title
+            - owner_id
+            - owner_name
+            type: object
+      summary: respond with a list of available user groups
+  /api/v1/group/<group_id>/quizzes:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties: {}
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              end:
+                pattern: ''
+                type: string
+              quiz_id:
+                type: integer
+              start:
+                pattern: ''
+                type: string
+              title:
+                type: string
+            required:
+            - quiz_id
+            - title
+            - start
+            - end
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with all the schedualed quizzes
+  /api/v1/group/<group_id>/users:
+    get:
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            max_score:
+              type: integer
+            min_score:
+              type: integer
+            sort_by:
+              type: string
+            status:
+              type: string
+          required: []
+          type: object
+      responses:
+        200:
+          description: 200
+          schema:
+            properties:
+              score:
+                type: integer
+              status:
+                type: string
+              user_id:
+                type: integer
+              user_name:
+                type: string
+            required:
+            - user_id
+            - user_name
+            - status
+            - score
+            type: object
+        403:
+          description: 403
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+        404:
+          description: 404
+          schema:
+            properties:
+              error:
+                type: string
+            required:
+            - error
+            type: object
+      summary: respond with a list of the groups subscribed users
+schemes:
+- http
+- https
+swagger: '2.0'
