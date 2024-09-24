@@ -9,9 +9,9 @@ def json_validate(data, schema):
         return None
     except ValidationError as e:
         if "is not of type" in e.message:
-            return jsonify({'error': _('invalid', data=e.path[0])}), 422
+            return jsonify({"error": _("invalid", data=e.path[0])}), 422
         elif "Missing required property" in e.message:
-            return jsonify({"error": _('missing', data=e.message.split("'")[1])}), 400
+            return jsonify({"error": _("missing", data=e.message.split("'")[1])}), 400
         elif "does not match the pattern" in e.message:
-            return jsonify({'error': _('invalid', data=e.path[0])}), 422
-        return jsonify({'error': _('invalid', data="request")}), 400
+            return jsonify({"error": _("invalid", data=e.path[0])}), 422
+        return jsonify({"error": _("invalid", data="request")}), 400

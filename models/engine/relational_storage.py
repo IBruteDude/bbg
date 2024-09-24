@@ -13,48 +13,59 @@ classes = {}
 
 
 class RelationalStorage:
-    """interacts with the SQL database
-    """
+    """interacts with the SQL database"""
+
     _engine = None
     _session = None
 
     def __init__(self):
-        """initialise the storage engine instance
-        """
-        self._engine = create_engine(f"sqlite:///{getenv('QQ_DB', 'quizquickie')}.db")
+        """initialise the storage engine instance"""
+        if getenv("QQ_DB_ENGINE", "SQLITE") == "MYSQL":
+            DB_NAME = getenv("QQ_DB_NAME", "quizquickie_db")
+            DB_USR = getenv("QQ_DB_USR", "quizquickie_usr")
+            DB_PWD = getenv("QQ_DB_PWD", "quizquickie_pwd")
+            DB_HOST = getenv("QQ_DB_HOST", "localhost")
+
+            self._engine = create_engine(
+                f"mysql+mysqldb://{DB_USR}:{DB_PWD}@{DB_HOST}/{DB_NAME}"
+            )
+        else:
+            DB = getenv("QQ_DB", "quizquickie_db")
+            self._engine = create_engine(f"sqlite:///{DB}.db")
 
     def new(self, obj):
-        """add the object to the current database session
-        """
-        self._session.add(obj)
+        """add the object to the current database session"""
+        if obj is not None:
+            self._session.add(obj)
+        return obj
 
     def update(self, obj):
-        self._session.merge(obj)
+        if obj is not None:
+            self._session.merge(obj)
+        return obj
 
     def delete(self, obj):
-        """delete from the current database session obj if not None
-        """
+        """delete from the current database session obj if not None"""
         if obj is not None:
             self._session.delete(obj)
+        return obj
 
     def save(self):
-        """commit all changes of the current database session
-        """
+        """commit all changes of the current database session"""
         self._session.commit()
 
     def reload(self):
-        """reloads data from the database
-        """
+        """reloads data from the database"""
         from models.base import Base
 
         Base.metadata.create_all(self._engine)
         session_factory = sessionmaker(bind=self._engine, expire_on_commit=False)
         Session = scoped_session(session_factory)
-        self._session = Session
+        self._session = Session()
 
     def close(self):
         """remove the session from the running storage engine"""
-        self._session.remove()
+        self._session.close()
 
     def get(self, cls, id):
         """
@@ -67,13 +78,11 @@ class RelationalStorage:
         return self._session.query(classes[cls]).get(id)
 
     def search(self, cls, **kwargs):
-        """Search for a matching class instance
-        """
+        """Search for a matching class instance"""
         return self._session.query(cls).filter_by(**kwargs).all()
 
     def count(self, cls=None):
-        """count the number of objects in storage
-        """
+        """count the number of objects in storage"""
         count = 0
 
         if not cls:
@@ -83,45 +92,45 @@ class RelationalStorage:
         return count
 
     def all(self, cls=None):
-        """query on the current database session
-        """
+        """query on the current database session"""
         new_dict = {}
         for clss in classes:
             if cls is None or cls is classes[clss] or cls is clss:
                 objs = self._session.query(classes[clss]).all()
                 for obj in objs:
-                    key = f'{obj.__class__.__name__}.{obj.id}'
+                    key = f"{obj.__class__.__name__}.{obj.id}"
                     new_dict[key] = obj
-        return (new_dict)
+        return new_dict
 
     def query(self, *args, **kwargs):
         return self._session.query(*args, **kwargs)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     db = RelationalStorage()
 
     from models.base import Base
     from sqlalchemy import Column, Integer, String
 
-
     class T(Base):
-        __tablename__ = 't'
+        __tablename__ = "t"
         id = Column(Integer, primary_key=True)
-        h = Column(String, default='hello')
-        w = Column(String, default='world')
+        h = Column(String, default="hello")
+        w = Column(String, default="world")
 
         def __repr__(self):
             return repr(self.json())
 
         def json(self):
             return self.__dict__
-    classes['t'] = T
+
+    classes["t"] = T
     db.reload()
 
     db.new(T())  # Add the object to the database
     db.new(T())
     db.new(T())
-    
+
     # Retrieve object by id
     obj = db.all(T)
     print(obj)
