@@ -26,7 +26,7 @@ def stats() -> str:
     from flask import g
     from flask_babel import _
 
-    user = getattr(g, "current_user", None)
+    user = getattr(g, "user", None)
     if user is None:
         return jsonify(_("unauthorized"))
 

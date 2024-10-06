@@ -83,6 +83,13 @@ def not_found(error) -> str:
     return jsonify({"error": _("not_found", data="user")}), 404
 
 
+@app.errorhandler(500)
+def not_found(error) -> str:
+    """Server error handler"""
+    storage.cleanup()
+    return jsonify({'error': _('unexpected')}), 500
+
+
 if __name__ == "__main__":
     host = getenv("API_HOST")
     port = getenv("API_PORT")

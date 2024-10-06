@@ -6,11 +6,21 @@ class Config:
     SECRET_KEY = "quizquickie_secret_key"
     LANGUAGES = ["en", "fr", "ar"]
     UNPROTECTED_ROUTES = [
-        "/apidocs",
+        "/apidocs/",
         "/apidocs/*",
+        
         "/api/v1/status/",
         "/api/v1/auth/signup/",
         "/api/v1/auth/login/",
+        '/api/v1/profile',
+        '/api/v1/profile/<int:user_id>',
+        '/api/v1/profile/<int:user_id>/quiz',
+        '/api/v1/quiz',
+        '/api/v1/quiz/<int:quiz_id>',
+        '/api/v1/quiz/<int:quiz_id>/stats',
+        '/api/v1/group',
+        '/api/v1/group/<int:group_id>/users',
+        '/api/v1/group/<int:group_id>/quizzes',
     ]
     SQLALCHEMY_DATABASE_URI = "sqlite:///quizquickie.db"
     SQLALCHEMY_TRACK_MODIFICATIONS = False

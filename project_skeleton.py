@@ -7,8 +7,7 @@ import shutil as su
 import json
 from typing import List, Optional
 
-from pydantic import Field
-
+from werkzeug.routing import Rule, Map
 
 GET = "GET"
 POST = "POST"
@@ -84,6 +83,77 @@ LOOP_DETECTED = 508  # Loop Detected
 BANDWIDTH_LIMIT_EXCEEDED = 509  # Bandwidth Limit Exceeded
 NOT_EXTENDED = 510  # Not Extended
 NETWORK_AUTHENTICATION_REQUIRED = 511  # Network Authentication Required
+status_code = {
+    100: "Continue",
+    101: "Switching Protocols",
+    102: "Processing",
+    103: "Early Hints",
+    103: "Checkpoint",
+    200: "OK",
+    201: "Created",
+    202: "Accepted",
+    203: "Non-Authoritative Information",
+    204: "No Content",
+    205: "Reset Content",
+    206: "Partial Content",
+    207: "Multi-Status",
+    208: "Already Reported",
+    226: "IM Used",
+    300: "Multiple Choices",
+    301: "Moved Permanently",
+    302: "Found",
+    302: "Moved Temporarily",
+    303: "See Other",
+    304: "Not Modified",
+    305: "Use Proxy",
+    307: "Temporary Redirect",
+    308: "Permanent Redirect",
+    400: "Bad Request",
+    401: "Unauthorized",
+    402: "Payment Required",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Timeout",
+    409: "Conflict",
+    410: "Gone",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Payload Too Large",
+    413: "Request Entity Too Large",
+    414: "URI Too Long",
+    414: "Request-URI Too Long",
+    415: "Unsupported Media Type",
+    416: "Requested range not satisfiable",
+    417: "Expectation Failed",
+    418: "I'm a teapot",
+    419: "Insufficient Space On Resource",
+    420: "Method Failure",
+    421: "Destination Locked",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    425: "Too Early",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests",
+    431: "Request Header Fields Too Large",
+    451: "Unavailable For Legal Reasons",
+    500: "Internal Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+    505: "HTTP Version not supported",
+    506: "Variant Also Negotiates",
+    507: "Insufficient Storage",
+    508: "Loop Detected",
+    509: "Bandwidth Limit Exceeded",
+    510: "Not Extended",
+    511: "Network Authentication Required",
+}
 
 
 class _expr:
@@ -93,14 +163,15 @@ class _expr:
     def __repr__(self):
         return self.s
 
-
 endpoints = {
     "index": {
         "/api/v1/status": {
             GET: {
                 "desc": "report the api status",
                 "request": {},
-                "responses": {OK: {"status": "str"}},
+                "responses": {OK: [{"status": "str"}]},
+                "snippet": '''
+''',
             }
         },
         "/api/v1/stats": {
@@ -108,9 +179,11 @@ endpoints = {
                 "desc": "report statistics about api uptime and workload",
                 "request": {},
                 "responses": {
-                    OK: {"online_users": "int"},
-                    UNAUTHORIZED: {},
+                    OK: [{"online_users": "int"}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+''',
             }
         },
     },
@@ -118,8 +191,9 @@ endpoints = {
         "/api/v1/auth/signup": {
             POST: {
                 "desc": "create a new user account",
+                "tags": ['User', 'UserSession'],
                 "request": {
-                    "email": "str",
+                    "email": "email",
                     "password": "str",
                     "first_name": "str",
                     "last_name": "str",
@@ -128,70 +202,117 @@ endpoints = {
                 },
                 "responses": {
                     # account created successfully
-                    CREATED: {},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('email'))")},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('user_name'))")},
-                    BAD_REQUEST: {
+                    CREATED: [{"user_id": "int"}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('email'))")},
+                    {"error": _expr("_('duplicate', data=_('user_name'))")}],
+                    BAD_REQUEST: [{
                         "error": _expr("_('incomplete', data=_('login details'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
+                    }],
+                    UNPROCESSABLE_ENTITY: [{
                         "error": _expr("_('invalid', data=_('login details'))")
-                    },
+                    }],
                 },
+                "snippet": '''
+    from bcrypt import gensalt, hashpw
+    try:
+        req["password"] = hashpw(req["password"].encode(), gensalt())
+        from sqlalchemy import or_
+        if storage.query(User).where(or_(User.email==req["email"], User.user_name==req["user_name"])).count() > 0:
+            return jsonify({'error': _('duplicate', data=_('email or user name'))}), 409
+        storage.new(User(**req))
+        storage.save()
+        return jsonify({}), 201
+    except Exception as e:
+        print(e)
+        abort(500)
+''',
             }
         },
         "/api/v1/auth/login": {
             POST: {
                 "desc": "create a new session for the user and log in",
-                "request": {"email": "str", "password": "str"},
+                "tags": ["User", "UserSession"],
+                "request": {"email": "email", "password": "str"},
                 "responses": {
-                    OK: {},
-                    UNAUTHORIZED: {
+                    OK: [{}],
+                    UNAUTHORIZED: [{
                         "error": _expr("_('invalid', data=_('login details'))")
-                    },
+                    }],
                 },
+                "snippet": '''
+
+    from bcrypt import checkpw
+    from api.v1.auth import auth, SessionAuth
+    from os import getenv
+    try:
+        user: User = storage.query(User).where(User.email==req["email"]).one_or_none()
+        pass_bytes = req["password"].encode()
+        if user is None or not checkpw(pass_bytes, user.password):
+            return jsonify({'error': _('invalid', data=_('login details'))}), 401
+        resp = jsonify({})
+        if isinstance(auth, SessionAuth):
+            session_id = auth.create_session(user.id)
+            resp.set_cookie(getenv("SESSION_NAME"), session_id)
+        return resp, 200
+    except Exception as e:
+        print(req)
+        print(f'{e.__class__.__name__}: {e}')
+        abort(500)
+''',
             }
         },
         "/api/v1/auth/password/reset": {
             GET: {
                 "desc": "send a password reset email",
+                "tags": ['User', 'UserSession'],
                 "request": {},
                 "responses": {
-                    OK: {},
-                    UNAUTHORIZED: {"error": _expr("_('unauthorized')")},
+                    OK: [{"reset_token": "str"}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+''',
             }
         },
         "/api/v1/auth/password/reset/confirm": {
             POST: {
                 "desc": "confirm password reset",
+                "tags": ['User', 'UserSession'],
                 "request": {"reset_token": "str", "new_password": "str"},
                 "responses": {
-                    OK: {},
-                    BAD_REQUEST: {
+                    OK: [{}],
+                    BAD_REQUEST: [{
                         "error": _expr("_('invalid', data=_('token or password'))")
-                    },
+                    }],
                 },
+                "snippet": '''
+''',
             }
         },
         "/api/v1/auth/logout": {
             DELETE: {
                 "desc": "remove user session and log out",
+                "tags": ['User', 'UserSession'],
                 "request": {},
                 "responses": {
-                    NO_CONTENT: {},
-                    UNAUTHORIZED: {"error": _expr("_('unauthorized')")},
+                    NO_CONTENT: [{}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+''',
             }
         },
         "/api/v1/auth/deactivate": {
             DELETE: {
                 "desc": "delete user account",
+                "tags": ['User', 'UserSession'],
                 "request": {},
                 "responses": {
-                    NO_CONTENT: {},
-                    UNAUTHORIZED: {"error": _expr("_('unauthorized')")},
+                    NO_CONTENT: [{}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+''',
             }
         },
     },
@@ -199,21 +320,35 @@ endpoints = {
         "/api/v1/user/profile": {
             GET: {
                 "desc": "respond with user profile details",
+                "tags": ['User'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user": {
-                            "email": "str",
+                            "email": "email",
                             "first_name": "str",
                             "last_name": "str",
                             "user_name": "str",
                             "profile_picture": "url",
                         }
-                    },
+                    }],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+
+    try:
+        return jsonify({"user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "user_name": user.user_name, "profile_picture": user.profile_picture}}), 200
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
             PUT: {
                 "desc": "change user profile details",
+                "tags": ['User'],
                 "request": {
                     "first_name?": "str",
                     "last_name?": "str",
@@ -221,135 +356,464 @@ endpoints = {
                     "profile_picture?": "url",
                 },
                 "responses": {
-                    OK: {},
-                    BAD_REQUEST: {"error": _expr("_('invalid', data=_('profile'))")},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('user_name'))")},
+                    OK: [{}],
+                    BAD_REQUEST: [{"error": _expr("_('invalid', data=_('profile'))")}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('user_name'))")}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    first_name = req["first_name"] if req.get("first_name", None) else None
+    last_name = req["last_name"] if req.get("last_name", None) else None
+    user_name = req["user_name"] if req.get("user_name", None) else None
+    profile_picture = (
+        req["profile_picture"] if req.get("profile_picture", None) else None
+    )
+
+    try:
+        if user_name:
+            if storage.query(User).where(User.user_name==user_name).count() > 0:
+                return jsonify({"error": _("duplicate", data=_("user_name"))}), 409
+            user.user_name = user_name
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        if profile_picture:
+            user.profile_picture = profile_picture
+        user.save()
+        return jsonify({}), 200
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
         },
-        "/api/v1/user/profile/quiz/<quiz_id>": {
+        #################################
+        "/api/v1/user/profile/quiz/<int:quiz_id>/attempts": {
             GET: {
                 "desc": "respond with all user's quiz attempts",
                 "pagination": "attempts",
+                "tags": ['User', 'Quiz'],
                 "request": {},
                 "responses": {
-                    OK: {"attempt_id": "int", "time": "datetime", "score": "int"},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
-                    GONE: {"error": _expr("_('deleted', data=_('quiz'))")},
-                    FORBIDDEN: {"error": _expr("_('quiz time has ended')")},
+                    OK: [{"attempt_id": "int", "time": "datetime", "score": "int"}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    GONE: [{"error": _expr("_('deleted', data=_('quiz'))")}],
+                    FORBIDDEN: [{"error": _expr("_('quiz time has ended')")}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    page = int(req["page"]) if req.get("page", None) else None
+    page_size = int(req["page_size"]) if req.get("page_size", None) else None
+    quiz_query = req["query"] if req.get("query", None) else None
+
+    from sqlalchemy import and_
+
+    try:
+        if storage.query(Quiz).join(QuizAttempt, QuizAttempt.quiz_id==Quiz.id).where(and_(QuizAttempt.user_id==user.id, Quiz.id==quiz_id)).one_or_none() is None:
+            return jsonify({"error": _("not_found", data=_("quiz"))}), 404
+
+        if storage.query(Quiz).get(quiz_id).end < datetime.now():
+            return jsonify({"error": _("quiz time has ended")}), 403
+
+        query = storage.query(QuizAttempt).filter_by(quiz_id=quiz_id, user_id=user.id)
+
+        if quiz_query:
+            query = query.join(Quiz, QuizAttempt.quiz_id==Quiz.id).where(Quiz.title.like(f"%{quiz_query}%"))
+
+        try:
+            return (
+                paginate(
+                    "attempts", query, page, page_size, lambda a: {"attempt_id": a.id, "time": datetime.strftime(a.created_at, time_fmt), "score": a.score}
+                ),
+                200,
+            )
+        except ValueError as e:
+            data = (
+                e.args[0]
+                if e.args and e.args[0] in ("page", "page_size")
+                else "request"
+            )
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
             POST: {
                 "desc": "submit user answers for the quiz's questions",
+                "tags": ['User', 'Quiz'],
                 "request": {"answers": [{"options": ["int"]}]},
                 "responses": {
-                    OK: {
-                        "correct_answers": [
-                            {
-                                "score": "int",
-                                "answers": [{"options": ["int"]}],
-                            }
-                        ]
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    OK: [{
+                        "attempt_id": "int",
+                        "time": "datetime",
+                        "total_score": "int",
+                        "correct_answers": [{"answer": ["int"]}]
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    answers = req["answers"]
+
+    try:
+        quiz = storage.query(Quiz).get(quiz_id)
+
+        if quiz is None:
+            return jsonify({"error": _("not_found", data=_("quiz"))}), 404
+
+
+        if len(answers) != len(quiz.questions):
+            return jsonify({"error": _("invalid", data=_("answer option"))}), 404
+
+        attempt = storage.new(QuizAttempt(score=0, quiz_id=quiz_id, user_id=user.id))
+
+
+        total_score = 0
+        full_score = True
+        correct_answers = []
+        for ans, q in zip(answers, quiz.questions):
+            for a in ans['options']:
+                storage.new(UserAnswer(attempt_id=attempt.id, answer=a, question_id=q.id)).save()
+            correct_answer = set(a.order for a in q.answers if a.correct)
+            if correct_answer == set(ans['options']):
+                total_score += q.points
+            else:
+                full_score = False
+            correct_answers.append({'options': list(correct_answer)})
+
+        attempt.score = total_score
+        attempt.full_score = full_score
+        attempt.save()
+
+        return (
+            jsonify({"score": total_score, "correct_answers": correct_answers}),
+            200,
+        )
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
         },
         "/api/v1/user/profile/group": {
             GET: {
                 "desc": "respond with all the user's subscribed groups",
+                "tags": ['User', 'Group'],
                 "pagination": "groups",
                 "request": {},
                 "responses": {
-                    OK: {"group_id": "int", "group_title": "str"},
+                    OK: [{"group_id": "int", "group_title": "str"}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    page = int(req["page"]) if req.get("page", None) else None
+    page_size = int(req["page_size"]) if req.get("page_size", None) else None
+    query = req["query"] if req.get("query", None) else None
+
+    try:
+        try:
+            return paginate("groups", query, page, page_size, None, apply=lambda g: {"group_id": g.id, "group_title": g.title}), 200
+        except ValueError as e:
+            data = (e.args[0]if e.args and e.args[0] in ("page", "page_size") else "request")
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
             POST: {
                 "desc": "subscribe the user to the group",
+                "tags": ['User', 'Group'],
                 "request": {"group_id": "int"},
                 "responses": {
-                    OK: {"groups": [{"group_id": "int", "group_title": "str"}]},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    CONFLICT: {"error": _expr("_('already subscribed to group')")},
-                    GONE: {"error": _expr("_('deleted', data=_('group'))")},
+                    OK: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
+                    CONFLICT: [{"error": _expr("_('already subscribed to group')")}],
+                    GONE: [{"error": _expr("_('deleted', data=_('group'))")}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    group_id = int(req["group_id"])
+
+    try:
+        group: Group = storage.query(Group).get(group_id)
+        if group is None:
+            return jsonify({"error": _("not_found", data=_("group"))}), 404
+        if user in group.users:
+            return jsonify({"error": _("already subscribed to group")}), 409
+        group.users.append(user)
+        storage.save()
+        return jsonify({}), 200
+        # return jsonify({"error": _("deleted", data=_("group"))}), 410
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
         },
+        "/api/v1/user/profile/group/<int:group_id>": {
+            DELETE: {
+                "desc": "unsubscribe user from a group",
+                "tags": ['User', 'Group'],
+                "request": {},
+                "responses": {
+                    NO_CONTENT: [{}],
+                    NOT_FOUND: [
+                        {"error": _expr("_('not_found', data=_('group'))")},
+                        {"error": _expr("_('user not subscribed to group')")}
+                    ],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
+                },
+                "snippet": '''
+''',
+            },
+        }
     },
     "user_groups": {
         "/api/v1/user/group": {
             GET: {
                 "desc": "respond with all the user's own groups",
+                "tags": ['User', 'Group', 'Ownership'],
                 "pagination": "groups",
                 "request": {},
                 "responses": {
-                    OK: {"group_id": "int", "group_title": "str"},
+                    OK: [{"group_id": "int", "title": "str"}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    from sqlalchemy import and_
+
+    try:
+        query = storage.query(Group).where(
+            and_(Group.ownership_id == Ownership.id, Ownership.user_id == user.id)
+        )
+        try:
+            return (
+                paginate(
+                    "groups",
+                    query,
+                    req.get("page", None),
+                    req.get("page_size", None),
+                    apply=lambda group: {"group_id": group.id, "title": group.title},
+                ),
+                200,
+            )
+        except ValueError as e:
+            data = (
+                e.args[0]
+                if e.args and e.args[0] in ("page", "page_size")
+                else "request"
+            )
+            return (
+                jsonify(
+                    {
+                        "error": _(
+                            "invalid",
+                            data=_(data),
+                        )
+                    }
+                ),
+                422,
+            )
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
             POST: {
                 "desc": "create a user group",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {"title": "str"},
                 "responses": {
-                    CREATED: {},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('title'))")},
+                    CREATED: [{"group_id": "int"}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('group'))")}],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+
+    try:
+
+        title = req["title"]
+
+        if storage.query(Group).filter_by(title=title).count() > 0:
+            return jsonify({"error": _("duplicate", data=_("group"))}), 409
+        storage.new(
+            Group(
+                title=title,
+                ownership_id=storage.new(Ownership(user_id=user.id)).save().id,
+            )
+        )
+        storage.save()
+        return jsonify({}), 201
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
         },
-        "/api/v1/user/group/<group_id>": {
+        "/api/v1/user/group/<int:group_id>": {
+            GET: {
+                "desc": "respond with user group details",
+                "tags": ['User', 'Group', 'Ownership'],
+                "request": {},
+                "responses": {
+                    OK: [{"group": {"title": "str"}}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
+                },
+            },
             PUT: {
                 "desc": "update user group details",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {"title": "str"},
                 "responses": {
-                    OK: {},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('title'))")},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
+                    OK: [{}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('title'))")}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    from sqlalchemy import and_
+    try:
+        group:Group = storage.query(Group).where(and_(Group.id==group_id, Group.ownership_id==Ownership.id, Ownership.user_id==user.id)).one_or_none()
+        if group is None:
+            return jsonify({"error": _("not_found", data=_("group"))}), 404
+            
+        title = req['title']
+        if storage.query(Group).where(Group.title==title).count() > 0:
+            return jsonify({"error": _("duplicate", data=_("title"))}), 409
+            
+        group.update(title=title)
+        return jsonify({}), 200
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+                ''',
             },
             DELETE: {
                 "desc": "delete a user group",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {},
                 "responses": {
-                    NO_CONTENT: {},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
+                    NO_CONTENT: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+
+    from sqlalchemy import and_
+    try:
+        group:Group = storage.query(Group).where(and_(Group.id==group_id, Group.ownership_id==Ownership.id, Ownership.user_id==user.id)).one_or_none()
+        if group is None:
+            return jsonify({"error": _("not_found", data=_("group"))}), 404
+        group.delete()
+        return jsonify({}), 204
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
         },
-        "/api/v1/user/group/<group_id>/users": {
+        "/api/v1/user/group/<int:group_id>/users": {
             GET: {
                 "desc": "get all the group subscribed users",
                 "pagination": "users",
+                "tags": ['User', 'Group', 'Ownership', 'QuizAttempt'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user_id": "int",
                         "user_name": "int",
                         "total_score": "int",
-                        "attempted_quizzes": [{"quiz_id": "int"}],
-                    },
-                    # group not found
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
+                        "attempted_quizzes": "int",
+                        # "attempted_quizzes": [{"quiz_id": "int"}],
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, 'user', None)
+    if user is None:
+        return jsonify({'error': _('unauthorized')}), 401
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    query = req['query'] if req.get('query', None) else None
+
+    from sqlalchemy import and_, func, distinct
+    try:
+        group = storage.query(Group).where(Group.ownership.user_id==user.id).filter_by(id=group_id).one_or_none()
+        if group is None:
+            return jsonify({'error': _('not_found', data=_('group'))}), 404
+
+        query = (
+            storage.query(
+                User,
+                func.sum(QuizAttempt.score).label("total_score"),
+                func.count(distinct(QuizAttempt.quiz_id)).label("attempt_count")
+            )
+            .outerjoin(QuizAttempt, Quiz.id == QuizAttempt.quiz_id)
+            .join(Quiz, Quiz.id == QuizAttempt.quiz_id)
+            .where(Quiz.group_id == group_id)
+            .group_by(User.id)
+        )
+
+        try:
+            return paginate("users", query, page, page_size, lambda u: {'user_id': u[0].id, 'user_name': u[0].user_name, 'total_score': u[1], 'attempted_quizzes': u[2]}), 200
+        except ValueError as e:
+            data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             },
             POST: {
                 "desc": "add users to a group",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {"users": [{"user_id": "int"}]},
                 "responses": {
-                    # user added successfully
-                    CREATED: {},
-                    # group not found
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    # user already in group
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('user'))")},
+                    OK: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('user'))")}],
                 },
+                "snippet": '''
+''',
             },
             DELETE: {
                 "desc": "remove users from group",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {"users": [{"user_id": "int"}]},
                 "responses": {
-                    NO_CONTENT: {},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('user'))")},
+                    NO_CONTENT: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('user'))")}],
                 },
+                "snippet": '''
+''',
             },
         },
     },
@@ -358,31 +822,80 @@ endpoints = {
             GET: {
                 "desc": "respond with the user's created quizzes",
                 "pagination": "quizzes",
+                "tags": ['User', 'Quiz'],
                 "request": {
                     "category?": "str",
                     "sort_by?": "str",
                     "difficulty?": "int",
                 },
                 "responses": {
-                    OK: {
+                    OK: [{
                         "quiz_id": "int",
                         "title": "str",
                         "category": "str",
                         "difficulty": "int",
                         "points": "int",
                         "duration": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('category'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('sort key'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('difficulty'))")
-                    },
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('category'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('sort key'))")},
+                        {"error": _expr("_('invalid', data=_('difficulty'))")}
+                    ],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+    sort_by = req.get("sort_by", None)
+    try:
+        query = storage.query(Quiz).where(Quiz.user_id == user.id)
+        if sort_by in (
+            "title",
+            "category",
+            "difficulty",
+            "points",
+            "duration",
+            "start",
+            "end",
+        ):
+            query = query.order_by(getattr(Quiz, sort_by))
+        for k in ("category", "difficulty"):
+            if req.get(k, None):
+                query = query.where(getattr(Quiz, k) == req[k])
+        try:
+            return (
+                paginate(
+                    "quizzes", query, req.get("page", None), req.get("page_size", None)
+                ),
+                200,
+            )
+        except ValueError as e:
+            data = (
+                e.args[0]
+                if e.args and e.args[0] in ("page", "page_size")
+                else "request"
+            )
+            return (
+                jsonify(
+                    {
+                        "error": _(
+                            "invalid",
+                            data=_(data),
+                        )
+                    }
+                ),
+                422,
+            )
+            # return jsonify({"error": _("not_found", data=_("category"))}), 404
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)
+''',
             },
             POST: {
                 "desc": "create a new quiz for user",
+                "tags": ['User', 'Quiz'],
                 "request": {
                     "title": "str",
                     "category": "str",
@@ -394,26 +907,87 @@ endpoints = {
                     "group_id?": "int",
                 },
                 "responses": {
-                    CREATED: {},
-                    BAD_REQUEST: {"error": _expr("_('incomplete', data=_('quiz'))")},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('category'))")},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('title'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('duration'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('points'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('quiz schedule'))")
-                    },
+                    CREATED: [{"quiz_id": "int"}],
+                    BAD_REQUEST: [{"error": _expr("_('incomplete', data=_('quiz'))")}],
+                    NOT_FOUND: [
+                        {"error": _expr("_('not_found', data=_('category'))")},
+                        {"error": _expr("_('not_found', data=_('group'))")}
+                    ],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('title'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('duration'))")},
+                        {"error": _expr("_('invalid', data=_('points'))")},
+                        {"error": _expr("_('invalid', data=_('quiz schedule'))")}
+                    ],
                 },
+                "snippet": '''
+    user = getattr(g, "user", None)
+    if user is None:
+        return jsonify({"error": _("unauthorized")}), 401
+
+    title = req.get("title")
+    category = req.get("category")
+    difficulty = int(req["difficulty"])
+    points = int(req["points"])
+    duration = int(req["duration"]) if req.get("duration", None) else None
+    start = (
+        datetime.strptime(req["start"], time_fmt) if req.get("start", None) else None
+    )
+    end = datetime.strptime(req["end"], time_fmt) if req.get("end", None) else None
+    group_id = int(req["group_id"]) if req.get("group_id", None) else None
+
+    try:
+        if storage.query(Quiz).where(Quiz.title == req.get("title")).count() > 0:
+            return jsonify({"error": _("duplicate", data=_("title"))}), 409
+
+        if len({type(start), type(end)}) > 1 or start > end or start < datetime.now():
+            return jsonify({"error": _("invalid", data=_("quiz schedule"))}), 422
+        if group_id:
+            if storage.query(Group).get(int(group_id)) is None:
+                return jsonify({"error": _("not_found", data=_("group"))}), 404
+
+        quiz = Quiz(
+            title=title,
+            category=category,
+            difficulty=difficulty,
+            points=points,
+            duration=duration,
+            start=start,
+            end=end,
+            user_id=user.id,
+            group_id=group_id,
+        )
+        storage.new(quiz)
+        storage.save()
+        return jsonify({}), 201
+    except Exception as e:
+        print(f"[{e.__class__.__name__}]: {e}")
+        abort(500)''',
             },
         },
-        "/api/v1/user/quiz/<quiz_id>": {
+        "/api/v1/user/quiz/<int:quiz_id>": {
+            GET: {
+                "desc": "respond with quiz details",
+                "tags": ['User', 'Quiz'],
+                "request": {},
+                "responses": {
+                    OK: [{
+                        "title": "str",
+                        "category": "str",
+                        "difficulty": "int",
+                        "points": "int",
+                        "duration": "int",
+                        "start": "datetime",
+                        "end": "datetime",
+                        "group_id": "int",
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    UNAUTHORIZED: [{"error": _expr("_('unauthorized')")}],
+                },
+            },
             PUT: {
                 "desc": "modify the quiz details",
+                "tags": ['User', 'Group', 'Quiz', 'Ownership'],
                 "request": {
                     "title?": "str",
                     "category?": "str",
@@ -425,37 +999,91 @@ endpoints = {
                     "group_id?": "int",
                 },
                 "responses": {
-                    OK: {},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('category'))")},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    CONFLICT: {"error": _expr("_('duplicate', data=_('title'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('duration'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('points'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('quiz schedule'))")
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    OK: [{}],
+                    NOT_FOUND: [
+                        {"error": _expr("_('not_found', data=_('category'))")},
+                        {"error": _expr("_('not_found', data=_('group'))")},
+                        {"error": _expr("_('not_found', data=_('quiz'))")},
+                    ],
+                    CONFLICT: [{"error": _expr("_('duplicate', data=_('title'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('duration'))")},
+                        {"error": _expr("_('invalid', data=_('points'))")},
+                        {"error": _expr("_('invalid', data=_('quiz schedule'))")}
+                    ],
                 },
+                "snippet": '''
+    user: User = getattr(g, 'user', None)
+    if user is None:
+        return jsonify({'error': _('unauthorized')}), 401
+    
+    category = req['category'] if req.get('category', None) else None
+    difficulty = int(req['difficulty']) if req.get('difficulty', None) else None
+    points = int(req['points']) if req.get('points', None) else None
+    duration = int(req['duration']) if req.get('duration', None) else None
+    start = datetime.strptime(req['start'], time_fmt) if req.get('start', None) else None
+    end = datetime.strptime(req['end'], time_fmt) if req.get('end', None) else None
+    title = req['title'] if req.get('title', None) else None
+    group_id = int(req['group_id']) if req.get('group_id', None) else None
+
+
+    try:
+        from sqlalchemy import and_
+        quiz: Quiz = storage.query(Quiz).where(and_(Quiz.user_id==user.id, Quiz.id==quiz_id))
+        if quiz is None:
+            return jsonify({'error': _('not_found', data=_('quiz'))}), 404
+
+        if category:
+            quiz.category = category
+        if difficulty:
+            if difficulty < 0:
+                return jsonify({'error': _('invalid', data=_('difficulty'))}), 422
+            quiz.difficulty = difficulty
+        if points:
+            if points < 0:
+                return jsonify({'error': _('invalid', data=_('points'))}), 422
+            quiz.points = points
+        if duration:
+            if duration < 0:
+                return jsonify({'error': _('invalid', data=_('duration'))}), 422
+            quiz.duration = duration
+        if start or end:
+            if len({type(start), type(end)}) > 1 or start > end or start < datetime.now():
+                return jsonify({"error": _("invalid", data=_("quiz schedule"))}), 422
+
+        if title:
+            if storage.query(Quiz).filter_by(title=title).count() > 0:
+                return jsonify({'error': _('duplicate', data=_('title'))}), 409
+            quiz.title = title
+        if group_id:
+            if storage.query(Group).where(and_(Group.id==group_id, Group.ownership_id==Ownership.id, Ownership.user_id==user.id)).one_or_none():
+                return jsonify({'error': _('not_found', data=_('group'))}), 404
+            quiz.group_id = group_id
+        return jsonify({}), 200
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             },
             DELETE: {
                 "desc": "delete the user's quiz",
+                "tags": ['User', 'Group', 'Quiz', 'Ownership'],
                 "request": {},
                 "responses": {
-                    NO_CONTENT: {},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    NO_CONTENT: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
                 },
+                "snippet": '''
+''',
             },
         },
-        "/api/v1/user/quiz/<quiz_id>/question": {
+        "/api/v1/user/quiz/<int:quiz_id>/question": {
             GET: {
                 "desc": "respond with the quiz's list of questions",
+                "tags": ['User', 'Question', 'Quiz'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "questions": [
                             {
                                 "statement": "str",
@@ -465,12 +1093,15 @@ endpoints = {
                                 "correct_answer": ["int"],
                             }
                         ]
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
                 },
+                "snippet": '''
+''',
             },
             POST: {
                 "desc": "add questions to the quiz",
+                "tags": ['User', 'Question', 'Quiz'],
                 "request": {
                     "questions": [
                         {
@@ -483,26 +1114,25 @@ endpoints = {
                     ]
                 },
                 "responses": {
-                    CREATED: {},
-                    BAD_REQUEST: {"error": _expr("_('missing', data=_('answers'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('question type'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('points'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('answer option'))")
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    CREATED: [{}],
+                    BAD_REQUEST: [{"error": _expr("_('missing', data=_('answers'))")}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('question type'))")},
+                        {"error": _expr("_('invalid', data=_('points'))")},
+                        {"error": _expr("_('invalid', data=_('answer option'))")}
+                    ],
                 },
+                "snippet": '''
+''',
             },
             PUT: {
                 "desc": "modify the quiz's questions",
+                "tags": ['User', 'Question', 'Quiz'],
                 "request": {
                     "questions": [
                         {
-                            "number": "int",
+                            "question_id": "int",
                             "statement?": "str",
                             "points?": "int",
                             "type?": "str",
@@ -512,122 +1142,175 @@ endpoints = {
                     ]
                 },
                 "responses": {
-                    OK: {},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('question number'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('question type'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('points'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('answer option'))")
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    OK: [{}],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('question number'))")},
+                        {"error": _expr("_('invalid', data=_('question type'))")},
+                        {"error": _expr("_('invalid', data=_('points'))")},
+                        {"error": _expr("_('invalid', data=_('answer option'))")}
+                    ],
                 },
+                "snippet": '''
+''',
             },
             DELETE: {
                 "desc": "remove questions from the quiz",
-                "request": {"question": [{"number": "int"}]},
+                "tags": ['User', 'Question', 'Quiz'],
+                "request": {"questions": [{"question_id": "int"}]},
                 "responses": {
-                    NO_CONTENT: {},
-                    NOT_FOUND: {
-                        "error": _expr("_('invalid', data=_('question number'))")
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    NO_CONTENT: [{}],
+                    NOT_FOUND: [
+                        {"error": _expr("_('invalid', data=_('question number'))")},
+                        {"error": _expr("_('not_found', data=_('quiz'))")}
+                    ],
                 },
+                "snippet": '''
+''',
             },
         },
-        "/api/v1/user/quiz/<quiz_id>/stats/attempts": {
+        "/api/v1/user/quiz/<int:quiz_id>/stats/attempts": {
             GET: {
                 "desc": "respond with stats about the user attempts of the quiz",
                 "pagination": "attempts",
+                "tags": ['User', 'QuizAttempt', 'Quiz'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user_id": "int",
                         "user_name": "str",
                         "attempt_id": "int",
                         "time": "datetime",
                         "points": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
                 },
+                "snippet": '''
+    user: User = getattr(g, 'user', None)
+    if user is None:
+        return jsonify({'error': _('unauthorized')}), 401
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    title_query = req['query'] if req.get('query', None) else None
+
+    from sqlalchemy import and_
+    try:
+        quiz: Quiz = storage.query(Quiz).where(Quiz.user_id==user.id).filter_by(id=quiz_id).one_or_none()
+        if quiz is None:
+            return jsonify({'error': _('not_found', data=_('quiz'))}), 404
+        query = storage.query(QuizAttempt).where(QuizAttempt.quiz_id==quiz_id)
+        if title_query:
+            query = query.where(and_(QuizAttempt.user_id==User.id, User.user_name.like(f'%{title_query}%')))
+        try:
+            return paginate("attempts", query, page, page_size, apply=lambda a: {'user_id': a.user.id, 'user_name': a.user.user_name, 'attempt_id': a.id, 'time': a.created_at, 'points': a.score}), 200
+        except ValueError as e:
+            data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             }
         },
-        "/api/v1/user/quiz/<quiz_id>/stats/question/<question_id>": {
+        "/api/v1/user/quiz/<int:quiz_id>/stats/question/<int:question_id>": {
             GET: {
                 "desc": "respond with stats about the user attempts of a quiz's question",
                 "pagination": "question_answers",
+                "tags": ['User', 'Question', 'Quiz'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "correct_answers": "int",
                         "wrong_answers": ["int"],
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
                 },
+                "snippet": '''
+''',
             }
         },
     },
     "profiles": {
         "/api/v1/profile": {
             GET: {
-                "desc": "respond with quizzes with different filters",
+                "desc": "respond with user profile info",
                 "pagination": "users",
+                "tags": ['User'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user_id": "int",
                         "user_name": "str",
-                    },
+                    }],
                 },
+                "snippet": '''
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    username_query = req.get('query', None)
+
+    try:
+        query = storage.query(User.id, User.user_name)
+        
+        if username_query:
+            query = query.where(User.user_name.like(f'%{username_query}%'))
+
+        return paginate("users", query, page, page_size, lambda u: {'user_id': u[0], 'user_name': u[1]}), 200
+    except ValueError as e:
+        data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+        return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             },
         },
-        "/api/v1/profile/<user_id>": {
+        "/api/v1/profile/<int:user_id>": {
             GET: {
                 "desc": "respond with user profile info",
+                "tags": ['User', 'Ownership', 'Group', 'Quiz', 'QuizAttempt'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user_name": "str",
                         "owned_groups": "int",
                         "created_quizzes": "int",
                         "subscribed_groups": "int",
                         "solved_quizzes": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('user'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('user'))")}],
                 },
+                "snippet": '''
+
+''',
             },
         },
-        "/api/v1/profile/<user_id>/quiz": {
+        "/api/v1/profile/<int:user_id>/quiz": {
             GET: {
                 "desc": "respond with the user's created quizzes",
                 "pagination": "quizzes",
+                "tags": ['User', 'Quiz'],
                 "request": {
                     "category?": "str",
                     "sort_by?": "str",
                     "difficulty?": "int",
                 },
                 "responses": {
-                    OK: {
+                    OK: [{
                         "quiz_id": "int",
                         "title": "str",
                         "category": "str",
                         "difficulty": "int",
                         "points": "int",
                         "duration": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('category'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('sort key'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('difficulty'))")
-                    },
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('category'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('sort key'))")},
+                        {"error": _expr("_('invalid', data=_('difficulty'))")}
+                    ],
                 },
+                "snippet": '''
+''',
             }
         },
     },
@@ -636,39 +1319,75 @@ endpoints = {
             GET: {
                 "desc": "respond with quizzes with different filters",
                 "pagination": "quizzes",
+                "tags": ['Quiz'],
                 "request": {
                     "category?": "str",
                     "sort_by?": "str",
                     "difficulty?": "int",
+                    "group_id?": "int",
                 },
                 "responses": {
-                    OK: {
+                    OK: [{
                         "quiz_id": "int",
                         "title": "str",
                         "category": "str",
                         "difficulty": "int",
                         "points": "int",
-                        "duration?": "int",
-                        "start?": "datetime",
-                        "end?": "datetime",
-                        "group_id?": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('category'))")},
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('sort key'))")
-                    },
-                    UNPROCESSABLE_ENTITY: {
-                        "error": _expr("_('invalid', data=_('difficulty'))")
-                    },
+                        "duration": "int",
+                        "start": "datetime",
+                        "end": "datetime",
+                        "group_id": "int",
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('category'))")}],
+                    UNPROCESSABLE_ENTITY: [
+                        {"error": _expr("_('invalid', data=_('sort key'))")},
+                        {"error": _expr("_('invalid', data=_('difficulty'))")}
+                    ],
                 },
+                "snippet": '''
+    user: User = getattr(g, 'user', None)
+    if user is None:
+        return jsonify({'error': _('unauthorized')}), 401
+    category = req['category'] if req.get('category', None) else None
+    difficulty = int(req['difficulty']) if req.get('difficulty', None) else None
+    sort_by = req['sort_by'] if req.get('sort_by', None) else None
+    group_id = int(req['group_id']) if req.get('group_id', None) else None
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    title_query = req['query'] if req.get('query', None) else None
+
+    try:
+        query = storage.query(Quiz)
+        
+        if group_id:
+            query = query.where(Quiz.group_id == group_id)
+        if title_query:
+            query = query.where(Quiz.title.like(f'%{title_query}%'))
+        if sort_by in (
+            "title",
+            "category",
+            "difficulty",
+            "points",
+            "duration",
+            "start",
+            "end",
+        ):
+            query = query.order_by(getattr(Quiz, sort_by))
+        if category:
+            query = query.where(Quiz.category == category)
+        if difficulty:
+            query = query.where(Quiz.difficulty == difficulty)
+        return paginate("quizzes", query, page, page_size), 200
+'''
             },
         },
-        "/api/v1/quiz/<quiz_id>": {
+        "/api/v1/quiz/<int:quiz_id>": {
             GET: {
                 "desc": "respond with the quiz's list of questions",
+                "tags": ['Quiz', 'Question'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "questions": [
                             {
                                 "statement": "str",
@@ -677,25 +1396,59 @@ endpoints = {
                                 "options": ["str"],
                             }
                         ]
-                    },
-                    GONE: {"error": _expr("_('deleted', data=_('quiz'))")},
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
+                    # GONE: [{"error": _expr("_('deleted', data=_('quiz'))")}],
                 },
+                "snippet": '''
+    try:
+        if storage.query(Quiz).where(Quiz.id==quiz_id).one_or_none() is None:
+            return jsonify({'error': _('not_found', data=_('quiz'))}), 404
+
+        questions = []
+        for q in storage.query(Question).where(Question.quiz_id==quiz_id).order_by(Question.order).all():
+            questions.append({
+                "statement": q.statement,
+                "points": q.points,
+                "type": q.type,
+                "options": [ans.text for ans in q.answers],
+            })
+
+        return jsonify({'questions': questions}), 200
+        # return jsonify({'error': _('deleted', data=_('quiz'))}), 410
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+'''
             },
         },
-        "/api/v1/quiz/<quiz_id>/stats": {
+        "/api/v1/quiz/<int:quiz_id>/stats": {
             GET: {
                 "desc": "respond with stats about the user attempts of the quiz",
+                "tags": ['Quiz', 'QuizAttempt'],
                 "request": {},
                 "responses": {
-                    OK: {
-                        "max_score": "float",
-                        "min_score": "float",
-                        "average_score": "float",
-                        "attempts": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('quiz'))")},
+                    OK: [
+                        {
+                            "max_score": "float",
+                            "min_score": "float",
+                            "average_score": "float",
+                            "attempts": "int",
+                        }
+                    ],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('quiz'))")}],
                 },
+                "snippet": '''
+    from sqlalchemy import func, distinct
+    try:
+        if storage.query(Quiz).get(quiz_id) is None:
+            return jsonify({'error': _('not_found', data=_('quiz'))}), 404
+        stats = storage.query(func.max(QuizAttempt.score), func.min(QuizAttempt.score), func.avg(QuizAttempt.score), func.count(distinct(Quiz.user_id))).where(QuizAttempt.quiz_id==quiz_id)
+        return jsonify({'max_score': stats[0], 'min_score': stats[1], 'average_score': stats[2], 'attempts': stats[3]}), 200
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+'''
             }
         },
     },
@@ -704,21 +1457,43 @@ endpoints = {
             GET: {
                 "desc": "respond with a list of available user groups",
                 "pagination": "groups",
+                "tags": ['User', 'Group', 'Ownership'],
                 "request": {},
                 "responses": {
-                    OK: {
+                    OK: [{
                         "group_id": "int",
                         "title": "str",
                         "owner_id": "int",
                         "owner_name": "str",
-                    },
+                    }],
                 },
+                "snippet": '''
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    title_query = req['query'] if req.get('query', None) else None
+
+    try:
+        query = storage.query(Group)
+        if title_query:
+            query = query.where(Group.title.like(f'%{title_query}%'))
+        try:
+            return paginate("groups", query, page, page_size, apply=lambda group: {
+                'group_id': group.id, 'title': group.title, 'owner_id': group.ownership.user_id, 'owner_name': group.ownership.user.user_name}
+                            ), 200
+        except ValueError as e:
+            data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             }
         },
-        "/api/v1/group/<group_id>/users": {
+        "/api/v1/group/<int:group_id>/users": {
             GET: {
                 "desc": "respond with a list of the groups subscribed users",
                 "pagination": "users",
+                "tags": ['User', 'Group', 'QuizAttempt'],
                 "request": {
                     "sort_by?": "str",
                     "status?": "str",
@@ -726,31 +1501,132 @@ endpoints = {
                     "min_score?": "int",
                 },
                 "responses": {
-                    OK: {
+                    OK: [{
                         "user_id": "int",
                         "user_name": "str",
                         "status": "str",
                         "score": "int",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
-                    FORBIDDEN: {"error": _expr("_('unauthorized')")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
+                    FORBIDDEN: [{"error": _expr("_('unauthorized')")}],
                 },
+                "snippet": '''
+    sort_by = req.get('sort_by', None)
+    status = req.get('status', None)
+    max_score = int(req['max_score']) if req.get('max_score', None) else None
+    min_score = int(req['min_score']) if req.get('min_score', None) else None
+    page = int(req['page']) if req.get('page', None) else None
+    page_size = int(req['page_size']) if req.get('page_size', None) else None
+    username_query = req.get('query', None)
+
+    from sqlalchemy import func, and_
+    try:
+        group = storage.get(Group, group_id)
+        if group is None:
+            return jsonify({'error': _('not_found', data=_('group'))}), 404
+
+        # return jsonify({'error': _('unauthorized')}), 403
+        query = (
+            storage.query(User, func.sum(QuizAttempt.score))
+            .join(QuizAttempt, User.id == QuizAttempt.user_id)  # Join User with QuizAttempt
+            .join(Quiz, QuizAttempt.quiz_id == Quiz.id)  # Join QuizAttempt with Quiz
+            .where(Quiz.group_id == group_id)  # Filter by the Quiz group ID
+            .group_by(User.id)  # Group by User ID
+        )
+        filters = []
+        if username_query:
+            filters.append(User.user_name.like(f"%{username_query}%"))  # Filter users by username
+        if min_score:
+            filters.append(func.sum(QuizAttempt.score) >= min_score)
+        if max_score:
+            filters.append(func.sum(QuizAttempt.score) <= max_score)
+        if status:
+            filters.append(func.count(User.user_sessions) > 0)
+        query = query.having(*filters)
+        if sort_by:
+            if sort_by == 'score':
+                query = query.order_by(func.sum(QuizAttempt.score).desc())
+            if sort_by == 'user_name':
+                query = query.order_by(User.user_name.asc())
+        try:
+            return paginate("users", query, page, page_size, apply=lambda u: {'user_id': u[0].id, 'user_name': u[0].user_name, 'status': "active" if len(u[0].user_sessions) > 0 else "away", 'score': u[1]}), 200
+        except ValueError as e:
+            data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+            return jsonify({"error": _("invalid", data=_(data))}), 422
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             },
         },
-        "/api/v1/group/<group_id>/quizzes": {
+        "/api/v1/group/<int:group_id>/quizzes": {
             GET: {
                 "desc": "respond with all the schedualed quizzes",
                 "pagination": "quizzes",
-                "request": {},
+                "tags": ['User', 'Group', 'Ownership', 'Quiz'],
+                "request": {
+                    "category?": "str",
+                    "sort_by?": "str",
+                    "difficulty?": "int",
+                },
                 "responses": {
-                    OK: {
+                    OK: [{
                         "quiz_id": "int",
                         "title": "str",
                         "start": "datetime",
                         "end": "datetime",
-                    },
-                    NOT_FOUND: {"error": _expr("_('not_found', data=_('group'))")},
+                    }],
+                    NOT_FOUND: [{"error": _expr("_('not_found', data=_('group'))")}],
                 },
+                "snippet": '''
+    try:
+        if storage.query(Group).get(group_id) is None:
+            return jsonify({'error': _('not_found', data=_('group'))}), 404
+        query = storage.query(Quiz).where(Quiz.group_id == group_id)
+
+        sort_by = req.get("sort_by", None)
+        if sort_by in (
+            "title",
+            "category",
+            "difficulty",
+            "points",
+            "duration",
+            "start",
+            "end",
+        ):
+            query = query.order_by(getattr(Quiz, sort_by))
+        for k in ("category", "difficulty"):
+            if req.get(k, None):
+                query = query.where(getattr(Quiz, k) == req[k])
+
+        try:
+            return (
+                paginate(
+                    "quizzes", query, req.get("page", None), req.get("page_size", None)
+                ),
+                200,
+            )
+        except ValueError as e:
+            data = (
+                e.args[0]
+                if e.args and e.args[0] in ("page", "page_size")
+                else "request"
+            )
+            return (
+                jsonify(
+                    {
+                        "error": _(
+                            "invalid",
+                            data=_(data),
+                        )
+                    }
+                ),
+                422,
+            )
+    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+''',
             }
         },
     },
@@ -802,7 +1678,8 @@ for k in project_structure["models"]:
             "__init__.py"
         }
 
-route_template = """from flask import jsonify, request
+route_template = """from datetime import datetime
+from flask import jsonify, request, g, abort
 from flask_babel import _
 from flasgger import swag_from
 
@@ -811,16 +1688,16 @@ from api.v1.schemas import json_validate
 from api.v1.schemas.{section} import (
     {schemas}
 )
+from models import storage, {tags}
+from models.base import time_fmt
+from models.engine.relational_storage import paginate
 
-{routes}
-"""
+{routes}"""
 
 schema_template = """\"\"\"JSON request validation schemas for the {section} endpoints
 \"\"\"
-from collections import OrderedDict
 
-{schemas}
-"""
+{schemas}"""
 
 
 # Helper function to create directories and files
@@ -858,23 +1735,24 @@ def create_test_directories(root, rel_path, structure):
 
 
 def generate_json_schema(value, allow_additional=True):
-    from collections import OrderedDict
-
+    NON_BLANK_REGEX = r"^(?!\s*$).+"
     if isinstance(value, dict):
-        body = OrderedDict(
-            {
-                "type": "object",
-                "properties": OrderedDict({}),
-                "required": [],
-            }
-        )
+        body = {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }
         if not allow_additional:
             body["additionalProperties"] = False
         for k, v in value.items():
             if k.endswith("?"):
-                body["properties"][k[:-1]] = generate_json_schema(v)
+                schema = generate_json_schema(v)
+                schema["type"] = [schema["type"], "null"]
+                body["properties"][k[:-1]] = schema
             else:
                 body["properties"][k] = generate_json_schema(v)
+                if body["properties"][k]["type"] == "string":
+                    body["properties"][k]["pattern"] = NON_BLANK_REGEX
                 body["required"].append(k)
         return body
     elif isinstance(value, list):
@@ -890,10 +1768,17 @@ def generate_json_schema(value, allow_additional=True):
         # if type(value) is _expr:
         #     print(value)
         return {"type": "string"}
+    elif value == "datetime":
+        return {"type": "string", "format": "date-time"}
+    elif value == "url":
+        return {"type": "string", "format": "uri"}
+    elif value == "email":
+        return {"type": "string", "format": "email"}
     else:
         PATTERNS = {
-            "datetime": r"",
-            "url": r"^(https?|ftp|file)://([-a-zA-Z0-9@:%._+~#=]{2,256})(:[0-9]+)?(/[-a-zA-Z0-9@:%._+~#=]*)*$",
+            # "datetime": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$",
+            # "url": r"^(https?|ftp|file)://([A-Za-z0-9.-]+)(:[0-9]+)?(/[^?#]*)?(\?[^#]*)?(#.*)?$",
+            "uuid": r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
         }
         return {"type": "string", "pattern": PATTERNS[value]}
 
@@ -909,55 +1794,78 @@ def route_handler_name(path, method):
 
 
 def generate_route_function(
-    path: str, section, route_handler, method, desc, request, responses, snippet=None
+    path: str, section, route_handler, method, desc, request, responses, pagination=None, snippet=None
 ):
     """Generate route functions based on path, method, and response codes, with response stubs for each"""
-    route_code = f"""@app_routes.route("{path}", methods=["{method}"], strict_slashes=False)
-@swag_from('documentation/{section}.yml')\n"""
 
-    from werkzeug.routing import Rule, Map
 
     rule_matcher = Rule(path, endpoint=route_handler)
     rule_matcher.bind(Map())
     params = ", ".join(rule_matcher.arguments)
-    route_code += f"""def {route_handler}({params}):\n"""
-    route_code += f"""    \"\"\"{method} {path}
+    route_code = f"""
+@app_routes.route("{path[7:]}", methods=["{method}"], strict_slashes=False)
+@swag_from('documentation/{section}/{route_handler}.yml')
+def {route_handler}({params}):
+    \"\"\"{method} {path}
     Return:
       - on success: {desc}
       - on error: respond with {', '.join(str(err) for err in sorted(responses) if str(err)[0] != '2')} error codes
     \"\"\"
+    req = dict(request.args)
+    if request.content_type == 'application/json':
+        req.update(request.json)
+    SCHEMA = {route_handler.upper()}_SCHEMA
+    error_response = json_validate(req, SCHEMA)
+    if error_response is not None:
+        return error_response
 """
-    route_code += "    data = request.args\n"
-    route_code += (
-        "    if request.content_type == 'application/json': data.update(request.json)\n"
-    )
-    route_code += "    status, err = 0, None\n\n"
-
-    # for k, v in request.items():
-    #     route_code += f"    {k.strip('?')} = data.get('{k.strip('?')}', None)\n"
-    #     if not k.endswith("?"):
-    #         route_code += f"    if {k} is None: return jsonify({{'error': _('missing', data=_('{k}'))}}), 400\n"
-
-    route_code += f"    SCHEMA = {route_handler.upper()}_SCHEMA\n"
-    route_code += "    error_response = json_validate(data, SCHEMA)\n"
-    route_code += "    if error_response is not None: return error_response\n"
-
     if snippet is not None:
-        route_code += "\n" + snippet
+        route_code += "\n" + snippet + '\n\n'
+        return route_code
+
+    route_code += """
+    user: User = getattr(g, 'user', None)
+    if user is None:
+        return jsonify({'error': _('unauthorized')}), 401
+"""
+    type_interpreter = {
+        "int": lambda e: f'int({e})',
+        "float": lambda e: f'float({e})',
+        "str": lambda e: e,
+        "url": lambda e: e,
+        "datetime": lambda e: f'datetime.strptime({e}, time_fmt)'
+    }
+    for k, v in request.items():
+        if k.endswith("?"):
+            k = k.strip("?")
+            route_code += f"    {k} = {type_interpreter[v](f"req['{k}']") if isinstance(v, str) else f'req.get(\'{k}\', None)'} if req.get('{k}', None) else None\n"
+        else:
+            route_code += f"    {k} = {type_interpreter[v](f"req['{k}']") if isinstance(v, str) else f'req[\'{k}\']'}\n"
+
 
     # Generate response stubs for each status code
-    route_code += "\n    match [status, err]:\n"
-    for status, response_body in responses.items():
+    route_code += "\n    try:\n"
+    for status, status_responses in responses.items():
         status_code = int(status)  # Default to the status as is (if numeric)
 
-        # Add the response for this status code
-        route_code += (
-            f"        case [{status_code}, err]:  # Stub for {status_code} response\n"
-        )
-        route_code += f"            return jsonify({response_body}), {status_code}\n"
+        # Add the responses for this status code
+        for response in status_responses:
+            route_code += f"        if False:  # Stub for {status_code} response\n"
+            route_code += f"            return jsonify({response}), {status_code}\n"
 
-    route_code += "        case _:\n"
-    route_code += "            return jsonify({'error': _('unexpected')}), 500\n\n"
+    if pagination:
+        route_code += f"""
+        query = storage.query()
+        return paginate("{pagination}", query, page, page_size, lambda u: u), 200
+    except ValueError as e:
+        data = e.args[0] if e.args and e.args[0] in ("page", "page_size") else "request"
+        return jsonify({{"error": _("invalid", data=_(data))}}), 422
+"""
+    route_code += """    except Exception as e:
+        print(f'[{e.__class__.__name__}]: {e}')
+        abort(500)
+
+"""
     return route_code
 
 
@@ -967,6 +1875,7 @@ def generate_routes(project_name, endpoints):
     for section, paths in endpoints.items():
         routes = ""
         schemas = {}
+        section_tags = []
         for path, methods in paths.items():
             for method, details in methods.items():
                 request = details.get("request", {})
@@ -974,6 +1883,8 @@ def generate_routes(project_name, endpoints):
                 desc = details.get("desc", "")
                 snippet = details.get("snippet", None)
                 pagination = details.get("pagination", None)
+                tags = details.get('tags', [])
+                section_tags.extend(tags)
 
                 if pagination:
                     request.update(
@@ -998,32 +1909,30 @@ def generate_routes(project_name, endpoints):
                     )
 
                 route_handler = route_handler_name(path, method)
-                routes += generate_route_function(
-                    path,
-                    section,
-                    route_handler,
-                    method,
-                    desc,
-                    request,
-                    responses,
-                    snippet,
-                )
+                # routes += generate_route_function(
+                #     path,
+                #     section,
+                #     route_handler,
+                #     method,
+                #     desc,
+                #     request,
+                #     responses,
+                #     pagination,
+                #     snippet,
+                # )
                 schemas[f"{route_handler.upper()}_SCHEMA"] = repr(
                     generate_json_schema(request)
                 )
 
-                # if len(request) != 0:
-                #     schemas += generate_schema_function(path, method, request)
-
-        routes_file_path = os.path.join(
-            base_path, "api", "v1", "routes", section + ".py"
-        )
-        create_file(
-            routes_file_path,
-            route_template.format(
-                routes=routes, section=section, schemas=",\n    ".join(schemas.keys())
-            ),
-        )
+        # routes_file_path = os.path.join(
+        #     base_path, "api", "v1", "routes", section + ".py"
+        # )
+        # create_file(
+        #     routes_file_path,
+        #     route_template.format(
+        #         routes=routes, section=section, schemas=",\n    ".join(schemas.keys()), tags=', '.join(sorted(set(section_tags + ['User'])))
+        #     ),
+        # )
 
         schemas_file_path = os.path.join(
             base_path, "api", "v1", "schemas", section + ".py"
@@ -1035,7 +1944,7 @@ def generate_routes(project_name, endpoints):
                 schemas="\n".join(f"{k} = {v}" for k, v in schemas.items()),
             ),
         )
-    create_routes_init_file(project_name, list(endpoints.keys()))
+    # create_routes_init_file(project_name, list(endpoints.keys()))
 
 
 def mirror_existing_files(project_name):
@@ -1344,7 +2253,8 @@ classes = {{{', '.join(f'"{cls}": {type_case(cls)}' for cls in classes)}}}
 storage = RelationalStorage()
 storage.reload()
 
-storage.new(User(email='admin@quizquickie.com', password=hashpw('admin'.encode(), gensalt()), user_name='admin'))
+if storage.query(User).where(User.user_name == 'admin').one_or_none() is None:
+	admin = storage.new(User(email='admin@quizquickie.com', password=hashpw('admin'.encode(), gensalt()), user_name='admin')).save()
 """
 
     create_file(
@@ -1361,76 +2271,81 @@ from flask import Blueprint
 app_routes = Blueprint("app_views", __name__, url_prefix="/api/v1")
 
 {'\n'.join(f'from api.v1.routes.{section} import *' for section in section_names)}
-    """
+"""
     create_file(
         os.path.join(os.getcwd(), project_name, "api", "v1", "routes", "__init__.py"),
         routes_init_file,
     )
 
+def filter_empty(json):
+    deleted = []
+    if isinstance(json, dict):
+        for k in json.keys():
+            v = json[k]
+            if isinstance(v, dict):
+                v = json[k] = filter_empty(v)
+            if len(v) == 0:
+                deleted.append(k)
+    for k in deleted:
+        del json[k]
+    return json    
 
 def generate_yaml_files(base_path, endpoints):
     import yaml
-    from collections import OrderedDict
 
     base_dir = os.path.join(base_path, "api", "v1", "routes", "documentation")
     for resource, paths in endpoints.items():
-        yaml_content = OrderedDict(
-            {
-                "swagger": "2.0",
-                "info": {
-                    "title": f'{resource.replace("_", " ").title()} API',
-                    "description": f'API documentation for {resource.replace("_", " ").title()}',
-                    "version": "1.0.0",
-                },
-                "host": "localhost:5000",
-                "basePath": "/api/v1",
-                "schemes": ["http", "https"],
-                "paths": {},
-            }
-        )
-
         for path, methods in paths.items():
             for method, details in methods.items():
-                method_info = OrderedDict(
-                    {
-                        "summary": details["desc"],
-                        "parameters": [],
-                        "responses": {},
-                    }
-                )
+                method_info = {
+                    "responses": {},
+                }
+                tags = details.get("tags", None)
+                parameters = []
+                
+                rule_matcher = Rule(path)
+                rule_matcher.bind(Map())
+                url_params = ({'name': param, 'in': 'path', 'type': 'string', 'required': True} for param in  rule_matcher.arguments)
+
+                parameters.extend(url_params)
 
                 # Convert request schema using your JSON Schema converter
                 if "request" in details:
                     request_schema = generate_json_schema(details["request"])
-                    method_info["parameters"].append(
-                        OrderedDict(
-                            {
-                                "name": "body",
-                                "in": "body",
-                                "required": True,
-                                "schema": request_schema,
-                            }
-                        )
+                    parameters.append(
+                        {
+                            "name": "body",
+                            "in": "query",
+                            "required": True,
+                            "schema": request_schema,
+                        }
                     )
+                
+                if parameters:
+                    method_info["parameters"] = parameters
 
                 # Convert response schemas
                 for response_code, response_details in details["responses"].items():
                     # print(response_code, end=' : ')
                     response_schema = generate_json_schema(response_details)
-                    method_info["responses"][response_code] = OrderedDict(
-                        {
-                            "description": response_code,
-                            "schema": response_schema,
-                        }
-                    )
+                    method_info["responses"][response_code] = {
+                        "description": status_code[response_code],
+                        "schema": response_schema,
+                    }
 
                 # Add method info to paths
-                yaml_content["paths"].setdefault(path, {})[method.lower()] = method_info
+                yaml_filename = os.path.join(base_dir, resource, f"{route_handler_name(path, method)}.yml")
+                os.makedirs(os.path.dirname(yaml_filename), exist_ok=True)
 
-        # Save the YAML content to a file
-        yaml_filename = os.path.join(base_dir, f"{resource}.yml")
-        with open(yaml_filename, "w") as yaml_file:
-            yaml.dump(yaml_content, yaml_file, default_flow_style=False)
+
+                # Save the YAML content to a file
+                with open(yaml_filename, "w") as yaml_file:
+                    yaml_file.write(f"""{details["desc"].capitalize()}
+---
+path: {path}
+{"tags:\n"+ '\n'.join(f'- {tag}' for tag in tags) if tags else ""}
+""")
+                    yaml.dump(filter_empty(method_info), yaml_file, default_flow_style=False)
 
 
 def generate_translations(project_name):
@@ -1447,7 +2362,7 @@ def generate_translations(project_name):
         lang_po = os.path.join("translations", lang, "LC_MESSAGES", "messages.po")
 
         os.system(f"pybabel init -i messages.pot -d translations -l {lang}")
-        from pprint import pp
+
 
         with open(lang_po) as f:
             lines = f.readlines()
@@ -1485,27 +2400,219 @@ def generate_flask_project(project_name):
     # Create project directories and files
     base_path = os.path.join(os.getcwd(), project_name)
 
-    create_directories(base_path, project_structure)
+    # create_directories(base_path, project_structure)
 
-    # create_test_directories(os.path.join(base_path, "tests"), "", project_structure)
+    # # create_test_directories(os.path.join(base_path, "tests"), "", project_structure)
 
-    # Generate dynamic code for routes
+    # # Generate dynamic code for routes
     generate_routes(base_path, endpoints)
 
-    relational_models = json.load(open(project_name + ".erdplus", "+br"))
+    # relational_models = json.load(open(project_name + ".erdplus", "+br"))
 
-    generate_models(project_name, relational_models)
+    # generate_models(project_name, relational_models)
 
     generate_yaml_files(base_path, endpoints)
 
-    mirror_existing_files(project_name)
+    # mirror_existing_files(project_name)
 
-    generate_translations(project_name)
+    # # generate_translations(project_name)
 
-    os.system(f"black -q {project_name}")
+    # os.system(f"black -q {project_name}")
+    
+    # generate_postman_collection(project_name, endpoints)
+    
+    # tests = json.load(open(project_name + "_tests.json", "+br"))
+
+    # generate_postman_test_collection(project_name, tests)
 
     # su.copytree(base_path, os.path.dirname(os.getcwd()), dirs_exist_ok=True)
 
 
+import json
+import requests
+
+# Helper function to create a Postman request
+def create_request(method, path, desc, request_body=None, response_schema=None):
+    request = {
+        "name": f"{method} {path}",
+        "request": {
+            "method": method,
+            "header": [],
+            "url": {
+                "raw": f"{{base_url}}{path}",
+                "host": ["{{base_url}}"],
+                "path": path.strip("/").split("/"),
+            },
+            "description": desc,
+        },
+        "response": [],
+    }
+    
+    if request_body:
+        request["request"]["body"] = {
+            "mode": "raw",
+            "raw": json.dumps(request_body, indent=2),
+            "options": {
+                "raw": {
+                    "language": "json"
+                }
+            }
+        }
+
+    if response_schema:
+        request["response"].append({
+            "name": "Example Response",
+            "originalRequest": request["request"],
+            "status": "OK",
+            "code": 200,
+            "body": json.dumps(response_schema, indent=4),
+        })
+
+    return request
+
+def generate_postman_collection(project_name, endpoints, save_to_account=True):
+    # Initialize an empty Postman collection
+    collection = {
+        "info": {
+            "name": f"{project_name} API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        "item": []
+    }
+
+    # Loop through the spec to add each path/method to the collection
+    for category, paths in endpoints.items():
+        category_folder = {
+            "name": category,
+            "item": []
+        }
+        for path, methods in paths.items():
+            folder = {
+                "name": path[8:],
+                "item": []
+            }
+
+            for method, details in methods.items():
+                request_body = details.get("request", {})
+                response_schema = details.get("responses", {}).get("OK", {})
+
+                # Add request to the folder
+                folder["item"].append(create_request(method, path, details["desc"], request_body, response_schema))
+
+            # Add folder to the collection
+            category_folder["item"].append(folder)
+        
+        collection["item"].append(category_folder)
+        
+    if save_to_account:
+        postman_api_key = open('postman_api.key').readline()[:-1]
+        response = requests.post(
+            "https://api.getpostman.com/collections",
+            headers={"X-Api-Key": postman_api_key, "Content-Type": "application/json"},
+            json={'collection': collection}
+        )
+        print(response.status_code, response.json())
+    else:
+        with open(f'{project_name}.postman_collection.json', 'w') as f:
+            json.dump(collection, f)
+
+
+
+
+
+
+tests = [
+    {"name": ""},
+]
+
+
+
+def create_test_request(name, path, method, request, status, response):
+    # Postman request item structure
+    item = {
+        "name": name,
+        "request": {
+            "method": method,
+            "header": [],
+            "body": {
+                "mode": "raw",
+                "raw": json.dumps(request, indent=4),
+                "options": {
+                    "raw": {
+                        "language": "json"
+                    }
+                }
+            },
+            "url": {
+                "raw": path,
+                "host": ["{{base_url}}"],  # Placeholder for base URL
+                "path": path.strip("/").split("/")
+            }
+        },
+        "response": []
+    }
+    # Add test cases in the form of scripts in Postman
+    test_script = f"""
+    pm.test("Status code is {status}", function () {{
+        pm.response.to.have.status(200);
+    }});
+    pm.test("Response body matches expected", function () {{
+        var expected = {json.dumps(json.loads(repr(response)), indent=4)};
+        pm.expect(pm.response.json()).to.deep.equal(expected);
+    }});
+    """
+    item["event"] = [{
+        "listen": "test",
+        "script": {
+            "type": "text/javascript",
+            "exec": [test_script]
+        }
+    }]
+    return item
+
+
+def generate_postman_test_collection(project_name, tests, save_to_account=True):
+    # Initialize an empty Postman collection
+    collection = {
+        "info": {
+            "name": f"{project_name} API Test",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        "item": []
+    }
+
+    # Loop through the spec to add each path/method to the collection
+    for test in tests:
+        name = test['name']
+        path = test['path']
+        method = test['method']
+        request = test['request']
+        status = test['status']
+        response = test['response']
+        
+        pm_test = create_test_request(name, path, method, request, status, response)
+        
+        collection["item"].append(pm_test)
+
+    if save_to_account:
+        postman_api_key = open('postman_api.key').readline()[:-1]
+        response = requests.post(
+            "https://api.getpostman.com/collections",
+            headers={"X-Api-Key": postman_api_key, "Content-Type": "application/json"},
+            json={'collection': collection}
+        )
+        print(response.status_code, response.json())
+    else:
+        with open(f'{project_name}_test.postman_collection.json', 'w') as f:
+            json.dump(collection, f)
+
 # Run the generator
 generate_flask_project("QuizQuickie")
+
+
+# for section, routes in endpoints.items():
+#     for route, methods in sorted(routes.items()):
+#         for method, details in methods.items():
+#             if method == 'POST':
+#                 # print(f"rs.{method.lower()}(url=\"{route}\", json={repr(details['request'])})")
+#                 print(f"{route}:\n\t{method}: {repr(details['request'])}")
