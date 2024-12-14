@@ -8,12 +8,10 @@ from engine.routes import generate_routes
 from engine.structure import create_directories, mirror_existing_files
 from engine.swagger import generate_yaml_files
 from engine.translation import generate_translations
-
-from config.specification import endpoints
-from config.structure import project_structure
-
 from engine.models import generate_models
 from engine import OUTPUT_DIR
+from config.specification import endpoints
+from config.structure import project_structure
 
 
 # Main function to generate the project
@@ -33,7 +31,9 @@ def generate_flask_project(project_name):
     # Generate dynamic code for routes
     generate_routes(base_path, endpoints)
 
-    relational_models = json.load(open(os.path.join("config", project_name + ".erdplus"), "+br"))
+    relational_models = json.load(
+        open(os.path.join("config", project_name + ".erdplus"), "+br")
+    )
 
     generate_models(project_name, relational_models)
 
@@ -44,14 +44,18 @@ def generate_flask_project(project_name):
     generate_translations(project_name)
 
     os.system(f"black -q {os.path.join(OUTPUT_DIR, project_name)}")
-    
+
     generate_postman_collection(project_name, endpoints)
-    
+
     tests = json.load(open(os.path.join("config", project_name + "_tests.json"), "+br"))
 
     generate_postman_test_collection(project_name, tests)
 
     # su.copytree(base_path, os.path.dirname(os.getcwd()), dirs_exist_ok=True)
 
+
 # Run the generator
 generate_flask_project("QuizQuickie")
+
+
+import click as ck
